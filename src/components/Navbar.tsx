@@ -1,15 +1,16 @@
 import React from 'react';
-import { BookOpen, CalendarDays, ChartNoAxesCombined, FlaskConical, Menu, MessageCircle, Target } from 'lucide-react';
+import { BookOpen, CalendarDays, ChartNoAxesCombined, FlaskConical, MessageCircle, Target, Layers3 } from 'lucide-react';
 
-export type AppTab = 'curriculum' | 'drill' | 'grapher' | 'tutor' | 'formulas' | 'roadmap';
+export type AppTab = 'curriculum' | 'terms' | 'drill' | 'grapher' | 'tutor' | 'formulas' | 'roadmap';
 interface Props { activeTab: AppTab; setActiveTab: (tab: AppTab) => void; completedToday: number; dailyTarget: number; streakDays: number; onQuickStart: () => void; }
 const nav = [
   { id: 'curriculum', label: 'Lessons', icon: BookOpen },
+  { id: 'terms', label: 'Terms', icon: Layers3 },
   { id: 'drill', label: 'Practice', icon: Target },
   { id: 'grapher', label: 'Visual tools', icon: ChartNoAxesCombined },
   { id: 'formulas', label: 'Formulas', icon: FlaskConical },
   { id: 'tutor', label: 'Ask Lex', icon: MessageCircle },
-  { id: 'roadmap', label: 'Plan', icon: CalendarDays },
+  { id: 'roadmap', label: 'Study plan', icon: CalendarDays },
 ] as const;
 export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, completedToday, dailyTarget }) => <header className="review-nav">
   <div className="review-nav-inner"><button className="review-brand" onClick={() => setActiveTab('curriculum')} aria-label="REE Review Desk home"><span className="brand-mark">R<span>.</span></span><span><strong>REE Review Desk</strong><small>STUDY / PRACTICE / REPEAT</small></span></button>
