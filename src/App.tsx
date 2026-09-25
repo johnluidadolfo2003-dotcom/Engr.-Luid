@@ -36,10 +36,13 @@ export default function App() {
         if (parsed.lastActiveDate === todayStr) {
           return parsed;
         } else {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const continuedStreak = parsed.lastActiveDate === yesterday.toDateString();
           return {
             target: 100,
             completedToday: 0,
-            streakDays: parsed.streakDays ? parsed.streakDays + 1 : 1,
+            streakDays: continuedStreak ? (parsed.streakDays || 0) + 1 : 1,
             totalAnswered: parsed.totalAnswered || 0,
             totalCorrect: parsed.totalCorrect || 0,
             lastActiveDate: todayStr,
@@ -124,7 +127,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-900">
+    <div className="min-h-screen bg-[#f6f5f0] text-slate-900 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-900">
       {/* Top Bar Navigation */}
       <Navbar
         activeTab={activeTab}
@@ -188,14 +191,14 @@ export default function App() {
       <footer className="border-t border-slate-200/80 bg-white py-6 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-800">REE Master</span>
+            <span className="font-semibold text-slate-800">REE Review Desk</span>
             <span>·</span>
             <span>Registered Electrical Engineer Licensure Examination Review</span>
           </div>
           <div>
-            <span>Target Board Exam: April 27</span>
+            <span>Study at your pace</span>
             <span className="mx-2">·</span>
-            <span>Cebu 6-Month Comprehensive Review Curriculum</span>
+            <span>Mathematics · Electrical Engineering · ESAS</span>
           </div>
         </div>
       </footer>
