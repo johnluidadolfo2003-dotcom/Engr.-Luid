@@ -10,7 +10,8 @@ import { DailyDrill } from './components/DailyDrill';
 import { EngineeringGrapher } from './components/EngineeringGrapher';
 import { AITutorAndNotes } from './components/AITutorAndNotes';
 import { FormulaVault } from './components/FormulaVault';
-import { RoadmapView } from './components/RoadmapView';
+import { StudyPlan } from './components/StudyPlan';
+import { TermsTrainer } from './components/TermsTrainer';
 import { initialProblems } from './data/mockProblems';
 import { BoardProblem, DailyGoalProgress } from './types';
 
@@ -160,6 +161,8 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'terms' && <TermsTrainer />}
+
         {activeTab === 'grapher' && (
           <EngineeringGrapher
             key={JSON.stringify(grapherPreset)}
@@ -179,10 +182,11 @@ export default function App() {
         {activeTab === 'formulas' && <FormulaVault />}
 
         {activeTab === 'roadmap' && (
-          <RoadmapView
+          <StudyPlan
             completedToday={dailyGoal.completedToday}
             dailyTarget={dailyGoal.target}
             totalSolved={dailyGoal.totalAnswered}
+            onNavigate={setActiveTab}
           />
         )}
       </main>

@@ -1,6 +1,8 @@
 {
-  "name": "REE Board Exam Master - Electrical Engineering Review & AI Drill",
-  "description": "Comprehensive 6-month review companion for the Electrical Engineering Board Exam (REE). Features 100/day high-yield problem drills in Math & EE Major subjects, interactive phasor & waveform graphers, formula reference, study roadmap to April 27, and an AI engineering tutor capable of analyzing uploaded review notes.",
+  "name": "REE Review Desk — Visual Licensure Exam Study",
+  "description": "Visual REE review based on the PRC Board Resolution No. 40, series of 2024 Table of Specifications. Includes the 30 main topic groups, 105 starter lessons, concise formula cards, interactive concept models, a terminology recall trainer, and practice drills.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
