@@ -1,5 +1,16 @@
 import React from 'react';
 
+const superscript: Record<string, string> = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻','+':'⁺','n':'ⁿ','x':'ˣ' };
+export function formatEngineeringFormula(input: string): string {
+  return input
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
+    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+    .replace(/\\(times|cdot)/g, '×')
+    .replace(/\\pi/g, 'π').replace(/\\theta/g, 'θ').replace(/\\Omega/g, 'Ω')
+    .replace(/\\pm/g, '±').replace(/\\angle/g, '∠')
+    .replace(/\^\(?([0-9nx+-]+)\)?/g, (_, exp: string) => [...exp].map(c => superscript[c] || c).join(''));
+}
+
 interface MathRendererProps {
   formula: string;
   className?: string;
@@ -52,7 +63,7 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
       .replace(/\\/g, ''); // strip any lingering backslashes
   };
 
-  const cleaned = formatMathString(formula);
+  const cleaned = formatEngineeringFormula(formatMathString(formula));
 
   const sizeClasses = {
     sm: 'text-xs py-1 px-2',

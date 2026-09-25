@@ -1,690 +1,102 @@
-import React, { useState, useEffect } from 'react';
-import {
-  CurriculumTrack,
-  CurriculumLesson,
-  CurriculumStage,
-} from '../types';
-import {
-  mathematicsStages,
-  electricalStages,
-  esasStages,
-} from '../data/curriculumData';
-import { MathRenderer } from './MathRenderer';
+import React, { useEffect, useRef, useState } from 'react';
+import { CurriculumLesson, CurriculumStage, CurriculumTrack } from '../types';
+import { fullMathematicsStages, fullElectricalStages, fullEsasStages } from '../data/curriculumData';
+import { LessonVisual } from './LessonVisual';
+import { formatEngineeringFormula } from './MathRenderer';
 import { CurriculumInteractiveLab } from './CurriculumInteractiveLab';
 import { InlineAIAssistant, AIContextPayload } from './InlineAIAssistant';
-import {
-  BookOpen,
-  CheckCircle2,
-  ChevronRight,
-  Sparkles,
-  Zap,
-  Calculator,
-  Compass,
-  ArrowRight,
-  Award,
-  Layers,
-  HelpCircle,
-  RotateCcw,
-  Check,
-  Cpu,
-  Lightbulb,
-  Search,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Search, Sparkles, X } from 'lucide-react';
 
-interface CurriculumStudyHubProps {
+interface Props {
   onAskMentor: (topic: string, question: string) => void;
   onOpenGrapher: (preset?: { tool: 'phasor' | 'rlc' | 'calculator'; params?: any }) => void;
   onStartDrillForTopic: (topic: string, subject: 'Mathematics' | 'EE Major' | 'ESAS') => void;
 }
 
-export const CurriculumStudyHub: React.FC<CurriculumStudyHubProps> = ({
-  onAskMentor,
-  onOpenGrapher,
-  onStartDrillForTopic,
-}) => {
-  const [selectedTrack, setSelectedTrack] = useState<CurriculumTrack>('mathematics');
+const tracks: { id: CurriculumTrack; name: string; detail: string; stages: CurriculumStage[] }[] = [
+  { id: 'mathematics', name: 'Mathematics', detail: 'Numbers → calculus', stages: fullMathematicsStages },
+  { id: 'electrical', name: 'Electrical Engineering', detail: 'Charge → power systems', stages: fullElectricalStages },
+  { id: 'esas', name: 'ESAS', detail: 'Units → professional practice', stages: fullEsasStages },
+];
 
-  // Completed lessons set
-  const [completedLessonIds, setCompletedLessonIds] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem('ree_completed_lessons');
-      if (saved) return new Set(JSON.parse(saved));
-    } catch {}
-    return new Set(['math-1-1']);
+function compact(text: string, max = 155) {
+  const first = text.split(/(?<=[.!?])\s+/)[0];
+  return first.length > max ? `${first.slice(0, max).replace(/\s+\S*$/, '')}…` : first;
+}
+
+export const CurriculumStudyHub: React.FC<Props> = ({ onAskMentor, onOpenGrapher }) => {
+  const [track, setTrack] = useState<CurriculumTrack>('mathematics');
+  const [selectedId, setSelectedId] = useState('math-1-1');
+  const [search, setSearch] = useState('');
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [revealed, setRevealed] = useState(false);
+  const [completed, setCompleted] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('ree_completed_lessons') || '[]')); } catch { return new Set(); }
   });
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [context, setContext] = useState<AIContextPayload | null>(null);
+  const practiceRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const currentTrack = tracks.find(t => t.id === track)!;
+  const lessons = currentTrack.stages.flatMap(s => s.lessons);
+  const selected = lessons.find(l => l.id === selectedId) || lessons[0];
+  const index = lessons.findIndex(l => l.id === selected.id);
+  const done = lessons.filter(l => completed.has(l.id)).length;
+  const questions = selected.quickPractice.slice(0, 2);
+  const allCorrect = questions.length > 0 && questions.every(q => answers[q.id] === q.correctAnswer);
 
-  // Track stages for current track
-  const currentStages: CurriculumStage[] =
-    selectedTrack === 'mathematics'
-      ? mathematicsStages
-      : selectedTrack === 'electrical'
-      ? electricalStages
-      : esasStages;
-
-  // Search filter for lessons
-  const [searchQuery, setSearchQuery] = useState<string>('');
-
-  // AI Assistant Drawer state (for same-page AI help)
-  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState<boolean>(false);
-  const [aiContextPayload, setAiContextPayload] = useState<AIContextPayload | null>(null);
-
-  // Selected lesson state
-  const [selectedLessonId, setSelectedLessonId] = useState<string>(() => {
-    return currentStages[0]?.lessons[0]?.id || 'math-1-1';
+  useEffect(() => { try { localStorage.setItem('ree_completed_lessons', JSON.stringify([...completed])); } catch {} }, [completed]);
+  const select = (lesson: CurriculumLesson) => {
+    setSelectedId(lesson.id); setAnswers({}); setRevealed(false);
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const selectTrack = (id: CurriculumTrack) => {
+    setTrack(id); setSelectedId(tracks.find(t => t.id === id)!.stages[0].lessons[0].id);
+    setAnswers({}); setRevealed(false); setSearch('');
+  };
+  const markDone = () => setCompleted(prev => {
+    const next = new Set(prev); if (next.has(selected.id)) next.delete(selected.id); else next.add(selected.id); return next;
   });
-
-  // User practice question answer state for active lesson
-  const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
-  const [practiceResults, setPracticeResults] = useState<Record<string, boolean>>({});
-
-  // Sync selected lesson when track changes
-  useEffect(() => {
-    if (currentStages[0]?.lessons[0]) {
-      setSelectedLessonId(currentStages[0].lessons[0].id);
-      setPracticeAnswers({});
-      setPracticeResults({});
-    }
-  }, [selectedTrack]);
-
-  // Save completed lessons
-  useEffect(() => {
-    try {
-      localStorage.setItem('ree_completed_lessons', JSON.stringify(Array.from(completedLessonIds)));
-    } catch {}
-  }, [completedLessonIds]);
-
-  // Find active lesson
-  const allCurrentLessons = currentStages.flatMap((s) => s.lessons);
-  const activeLesson: CurriculumLesson =
-    allCurrentLessons.find((l) => l.id === selectedLessonId) || allCurrentLessons[0];
-
-  const toggleLessonCompleted = (lessonId: string) => {
-    setCompletedLessonIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(lessonId)) next.delete(lessonId);
-      else next.add(lessonId);
-      return next;
-    });
+  const ask = () => {
+    setContext({ topic: selected.title, subtopic: selected.stageTitle, question: selected.summary, formula: selected.formulas[0]?.formula, boardTip: selected.boardExamTip });
+    setAssistantOpen(true);
   };
 
-  const handlePracticeAnswer = (qId: string, choiceIdx: number, correctIdx: number) => {
-    setPracticeAnswers((prev) => ({ ...prev, [qId]: choiceIdx }));
-    setPracticeResults((prev) => ({ ...prev, [qId]: choiceIdx === correctIdx }));
-  };
-
-  // Calculate completion percentage for this track
-  const completedCount = allCurrentLessons.filter((l) => completedLessonIds.has(l.id)).length;
-  const progressPercent = Math.round((completedCount / (allCurrentLessons.length || 1)) * 100);
-
-  const trackInfo = {
-    mathematics: {
-      title: 'Mathematics Track (From Zero)',
-      subtitle: 'Arithmetic ➔ Algebra ➔ Trig ➔ Analytic Geom ➔ Differential & Integral Calculus',
-      badge: '50% of Board Exam Math Component',
-      subjectName: 'Mathematics' as const,
-      color: 'amber',
-    },
-    electrical: {
-      title: 'Electrical Engineering Major Track (From Zero)',
-      subtitle: 'Electron Theory ➔ DC Circuits ➔ Magnetism ➔ AC Phasors ➔ Machines ➔ Power Systems & PEC',
-      badge: 'Major Subject (50% Exam Weight)',
-      subjectName: 'EE Major' as const,
-      color: 'sky',
-    },
-    esas: {
-      title: 'ESAS Track (From Zero)',
-      subtitle: 'Units ➔ Statics & Dynamics ➔ Strength of Materials ➔ Thermodynamics ➔ Economy ➔ RA 7920',
-      badge: 'Engineering Sciences & Allied Subjects',
-      subjectName: 'ESAS' as const,
-      color: 'emerald',
-    },
-  };
-
-  const currentInfo = trackInfo[selectedTrack];
-
-  return (
-    <div className="space-y-6">
-      {/* Top Track Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 text-white shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 uppercase tracking-wide">
-              <span>PRC Registered Electrical Engineer Comprehensive Curriculum</span>
-              <span>·</span>
-              <span>Start From Zero Knowledge</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-              Sequential Mastery Curriculum: Study from the Absolute Start
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-3xl">
-              No assumed prior knowledge. Step through each concept in exact progression: basic definitions, plain-English intuition, standard formulas, step-by-step arithmetic, and Casio calculator shortcuts.
-            </p>
-          </div>
-
-          {/* Master Track Selector Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-800 rounded-xl self-start lg:self-auto shrink-0">
-            <button
-              onClick={() => setSelectedTrack('mathematics')}
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                selectedTrack === 'mathematics'
-                  ? 'bg-amber-400 text-slate-950 shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Calculator className="w-4 h-4" />
-              <span>1. Mathematics (Start)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTrack('electrical')}
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                selectedTrack === 'electrical'
-                  ? 'bg-amber-400 text-slate-950 shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Zap className="w-4 h-4" />
-              <span>2. Electrical Major</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTrack('esas')}
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                selectedTrack === 'esas'
-                  ? 'bg-amber-400 text-slate-950 shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>3. ESAS</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Track Progress Bar */}
-        <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white">{currentInfo.title}</span>
-            <span>·</span>
-            <span>
-              {completedCount} of {allCurrentLessons.length} lessons mastered ({progressPercent}%)
-            </span>
-          </div>
-          <div className="w-full sm:w-48 bg-slate-800 h-2 rounded-full overflow-hidden">
-            <div
-              className="bg-amber-400 h-full rounded-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Two-Column View: Left Stage/Lesson Navigation & Right Detailed Lesson */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: Progressive Lesson Directory (4 cols) */}
-        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden space-y-3 p-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Course Syllabus Progression
-              </h2>
-              <p className="text-[11px] text-slate-500">
-                Click any lesson to study from first principles:
-              </p>
-            </div>
-            <span className="text-[11px] font-mono text-slate-400">{allCurrentLessons.length} Lessons</span>
-          </div>
-
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search topics (e.g. PEMDAS, Ohm, Wye)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400"
-            />
-          </div>
-
-          <div className="space-y-4 max-h-[750px] overflow-y-auto pr-1">
-            {currentStages
-              .map((stage) => {
-                const filteredLessons = stage.lessons.filter(
-                  (l) =>
-                    !searchQuery.trim() ||
-                    l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    l.summary.toLowerCase().includes(searchQuery.toLowerCase())
-                );
-                return { ...stage, filteredLessons };
-              })
-              .filter((stage) => stage.filteredLessons.length > 0)
-              .map((stage) => (
-                <div key={stage.stageNumber} className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-900 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                    <span>{stage.stageTitle}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      {stage.lessons.filter((l) => completedLessonIds.has(l.id)).length}/{stage.lessons.length}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 pl-1">
-                    {stage.filteredLessons.map((lesson) => {
-                      const isSelected = activeLesson?.id === lesson.id;
-                      const isDone = completedLessonIds.has(lesson.id);
-
-                      return (
-                        <button
-                          key={lesson.id}
-                          onClick={() => {
-                            setSelectedLessonId(lesson.id);
-                            setPracticeAnswers({});
-                            setPracticeResults({});
-                          }}
-                          className={`w-full text-left p-2.5 rounded-lg text-xs flex items-start justify-between gap-2 transition-all ${
-                            isSelected
-                              ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                              : isDone
-                              ? 'bg-emerald-50/60 text-emerald-950 hover:bg-emerald-100/60 border border-emerald-200/50'
-                              : 'text-slate-700 hover:bg-slate-100 border border-transparent'
-                          }`}
-                        >
-                        <div className="flex items-start gap-2">
-                          <span
-                            className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 mt-0.5 ${
-                              isSelected
-                                ? 'bg-amber-400 text-slate-950'
-                                : isDone
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {lesson.lessonNumber}
-                          </span>
-                          <span className="leading-snug text-[11px] sm:text-xs">
-                            {lesson.title}
-                          </span>
-                        </div>
-
-                        {isDone && (
-                          <CheckCircle2
-                            className={`w-4 h-4 shrink-0 mt-0.5 ${
-                              isSelected ? 'text-amber-400' : 'text-emerald-600'
-                            }`}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Quick Action Footer */}
-          <div className="pt-2 border-t border-slate-100 space-y-2">
-            <button
-              onClick={() => onStartDrillForTopic(activeLesson.title, currentInfo.subjectName)}
-              className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-500" />
-              <span>Practice 10 Drills on This Topic</span>
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: Super Detailed Lesson Content (8 cols) */}
-        {activeLesson && (
-          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden space-y-6">
-            {/* Lesson Title Header */}
-            <div className="p-6 bg-slate-50 border-b border-slate-200 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold font-mono">
-                    Lesson {activeLesson.lessonNumber}
-                  </span>
-                  <span className="text-slate-400">·</span>
-                  <span className="text-slate-600 font-medium">{activeLesson.stageTitle}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleLessonCompleted(activeLesson.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                      completedLessonIds.has(activeLesson.id)
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <CheckCircle2
-                      className={`w-4 h-4 ${
-                        completedLessonIds.has(activeLesson.id) ? 'text-emerald-600' : 'text-slate-400'
-                      }`}
-                    />
-                    <span>
-                      {completedLessonIds.has(activeLesson.id) ? 'Mastered' : 'Mark as Mastered'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setAiContextPayload({
-                        topic: activeLesson.title,
-                        subtopic: activeLesson.stageTitle,
-                        question: activeLesson.summary,
-                        formula: activeLesson.formulas[0]?.formula,
-                        boardTip: activeLesson.boardExamTip,
-                      });
-                      setIsAIAssistantOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-medium transition-colors"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Ask AI Tutor (On Page)</span>
-                  </button>
-                </div>
-              </div>
-
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                {activeLesson.title}
-              </h1>
-
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                {activeLesson.summary}
-              </p>
-
-              {/* Why It Matters Callout */}
-              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-xs text-amber-950 flex items-start gap-2">
-                <Award className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="font-semibold block text-amber-900">
-                    Why This Matters for the REE Board Exam:
-                  </strong>
-                  <span>{activeLesson.whyItMatters}</span>
-                </div>
-              </div>
-
-              {/* Zero-Knowledge Plain-English Analogy (Assume No Knowledge) */}
-              {activeLesson.zeroKnowledgeAnalogy && (
-                <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-lg text-xs text-sky-950 flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-md bg-sky-500/10 border border-sky-300 flex items-center justify-center text-sky-700 shrink-0 mt-0.5">
-                    <Lightbulb className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="space-y-1">
-                    <strong className="font-semibold block text-sky-900 text-xs">
-                      Plain-English Intuition (Zero Prior Knowledge Assumed):
-                    </strong>
-                    <p className="leading-relaxed text-sky-950 text-xs">
-                      {activeLesson.zeroKnowledgeAnalogy}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Core Theory: Step-by-Step Explanation */}
-            <div className="px-6 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-amber-600" />
-                <span>1. Core Theory & First Principles (No Assumptions)</span>
-              </h3>
-
-              <div className="space-y-3 text-xs sm:text-sm text-slate-700 leading-relaxed bg-slate-50/60 p-4 rounded-xl border border-slate-100">
-                {activeLesson.coreTheory.map((paragraph, pIdx) => (
-                  <p key={pIdx}>{paragraph}</p>
-                ))}
-              </div>
-            </div>
-
-            {/* Interactive Live Mini-Lab (if lesson has interactive simulator) */}
-            {activeLesson.interactiveTool && (
-              <div className="px-6 space-y-3">
-                <CurriculumInteractiveLab
-                  toolType={activeLesson.interactiveTool}
-                  lessonTitle={activeLesson.title}
-                  onOpenGrapher={onOpenGrapher}
-                />
-              </div>
-            )}
-
-            {/* Key Formulas */}
-            {activeLesson.formulas.length > 0 && (
-              <div className="px-6 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-amber-600" />
-                  <span>2. Master Formulas & Variable Units</span>
-                </h3>
-
-                <div className="space-y-3">
-                  {activeLesson.formulas.map((f, fIdx) => (
-                    <div
-                      key={fIdx}
-                      className="p-4 bg-white border border-slate-200 rounded-xl space-y-2 shadow-xs"
-                    >
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-900">
-                        <span>{f.name}</span>
-                        <span className="text-[11px] font-mono text-slate-400 font-normal">
-                          Units: {f.units}
-                        </span>
-                      </div>
-
-                      <MathRenderer formula={f.formula} size="md" />
-
-                      <p className="text-xs text-slate-600 leading-relaxed pt-1">
-                        {f.explanation}
-                      </p>
-
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Variables: {f.variables}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Worked Example (Step-by-Step Arithmetic) */}
-            <div className="px-6 space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <Calculator className="w-4 h-4 text-sky-600" />
-                <span>3. Worked Step-by-Step Example (Full Calculation Shown)</span>
-              </h3>
-
-              <div className="p-4 bg-sky-50/60 border border-sky-200 rounded-xl space-y-3">
-                <p className="text-xs sm:text-sm font-semibold text-slate-900">
-                  {activeLesson.workedExample.problem}
-                </p>
-
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-bold text-sky-900 uppercase tracking-wide">
-                    Given Values:
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {activeLesson.workedExample.given.map((g, gIdx) => (
-                      <span
-                        key={gIdx}
-                        className="px-2.5 py-1 bg-white border border-sky-200 text-sky-950 font-mono text-xs rounded-md"
-                      >
-                        {g}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-bold text-sky-900 uppercase tracking-wide">
-                    Step-by-Step Solution:
-                  </span>
-                  <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-800 bg-white p-3.5 rounded-lg border border-sky-200/80">
-                    {activeLesson.workedExample.stepByStep.map((step, sIdx) => (
-                      <li key={sIdx} className="leading-relaxed">
-                        <span className="font-mono text-[11px] sm:text-xs text-slate-900">{step}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-
-                <div className="p-3 bg-white border border-sky-300 rounded-lg flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">Final Answer:</span>
-                    <span className="text-base font-bold font-mono text-sky-950">
-                      {activeLesson.workedExample.answer}
-                    </span>
-                  </div>
-
-                  {activeLesson.workedExample.calculatorShortcut && (
-                    <div className="text-xs text-sky-900 text-right max-w-xs">
-                      <strong className="block text-[11px]">Casio fx-991ES:</strong>
-                      <span className="font-mono text-[10px] text-slate-600">
-                        {activeLesson.workedExample.calculatorShortcut}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Practice Comprehension Check */}
-            {activeLesson.quickPractice.length > 0 && (
-              <div className="px-6 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>4. Quick Practice Comprehension Check (Test Yourself Now)</span>
-                </h3>
-
-                <div className="space-y-4">
-                  {activeLesson.quickPractice.map((qp, qIdx) => {
-                    const answeredIdx = practiceAnswers[qp.id];
-                    const isAnswered = answeredIdx !== undefined;
-                    const isCorrect = practiceResults[qp.id];
-
-                    return (
-                      <div
-                        key={qp.id}
-                        className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs"
-                      >
-                        <p className="text-xs sm:text-sm font-medium text-slate-900">
-                          {qIdx + 1}. {qp.question}
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {qp.options.map((opt, optIdx) => {
-                            const isSelected = answeredIdx === optIdx;
-                            const isCorrectChoice = optIdx === qp.correctAnswer;
-
-                            let btnStyle = 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100';
-                            if (isAnswered) {
-                              if (isCorrectChoice) {
-                                btnStyle = 'bg-emerald-50 border-emerald-500 text-emerald-950 font-semibold';
-                              } else if (isSelected && !isCorrectChoice) {
-                                btnStyle = 'bg-rose-50 border-rose-500 text-rose-950';
-                              } else {
-                                btnStyle = 'bg-white border-slate-200 text-slate-400 opacity-60';
-                              }
-                            }
-
-                            return (
-                              <button
-                                key={optIdx}
-                                onClick={() => handlePracticeAnswer(qp.id, optIdx, qp.correctAnswer)}
-                                disabled={isAnswered}
-                                className={`p-2.5 rounded-lg border text-left flex items-start gap-2 transition-all ${btnStyle}`}
-                              >
-                                <span className="font-mono font-bold text-[11px] shrink-0">
-                                  {String.fromCharCode(65 + optIdx)}.
-                                </span>
-                                <span>{opt}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {isAnswered && (
-                          <div className="pt-2 border-t border-slate-200 text-xs">
-                            <span
-                              className={`font-semibold block mb-1 ${
-                                isCorrect ? 'text-emerald-700' : 'text-rose-700'
-                              }`}
-                            >
-                              {isCorrect ? 'Correct! Concept verified.' : 'Incorrect.'}
-                            </span>
-                            <p className="text-slate-600 text-[11px] leading-relaxed">
-                              {qp.explanation}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Board Exam Golden Tip */}
-            <div className="px-6 pb-6">
-              <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-amber-900 uppercase text-[10px]">
-                  <Zap className="w-3.5 h-3.5 text-amber-600" />
-                  <span>PRC Board Exam Secret & Memory Rule:</span>
-                </div>
-                <p className="text-amber-950 leading-relaxed font-sans text-xs">
-                  {activeLesson.boardExamTip}
-                </p>
-              </div>
-            </div>
-
-            {/* Bottom Navigation */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <button
-                onClick={() => {
-                  const currentIdx = allCurrentLessons.findIndex((l) => l.id === activeLesson.id);
-                  if (currentIdx > 0) {
-                    setSelectedLessonId(allCurrentLessons[currentIdx - 1].id);
-                    setPracticeAnswers({});
-                    setPracticeResults({});
-                  }
-                }}
-                disabled={allCurrentLessons.findIndex((l) => l.id === activeLesson.id) === 0}
-                className="px-3.5 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous Lesson
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onOpenGrapher(activeLesson.grapherPreset)}
-                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
-                >
-                  <Cpu className="w-3.5 h-3.5" />
-                  <span>Open in Grapher</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    const currentIdx = allCurrentLessons.findIndex((l) => l.id === activeLesson.id);
-                    if (currentIdx < allCurrentLessons.length - 1) {
-                      setSelectedLessonId(allCurrentLessons[currentIdx + 1].id);
-                      setPracticeAnswers({});
-                      setPracticeResults({});
-                    }
-                  }}
-                  disabled={allCurrentLessons.findIndex((l) => l.id === activeLesson.id) === allCurrentLessons.length - 1}
-                  className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next Lesson
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Embedded Same-Page AI Assistant Drawer */}
-      <InlineAIAssistant
-        isOpen={isAIAssistantOpen}
-        onClose={() => setIsAIAssistantOpen(false)}
-        context={aiContextPayload}
-      />
+  return <div ref={topRef} className="review-page">
+    <section className="review-hero">
+      <div><div className="review-eyebrow">THE REVIEW DESK / REE</div><h1>Understand it.<br/><em>Then remember it.</em></h1><p>One idea, one visual, one worked example. Move from the basics through the three review subjects at your own pace.</p></div>
+      <div className="review-progress"><span>YOUR COURSE</span><strong>{done}<small> / {lessons.length}</small></strong><div className="review-meter"><i style={{width: `${100 * done / lessons.length}%`}}/></div><span>lessons completed in {currentTrack.name}</span></div>
+    </section>
+    <div className="review-tracks" role="tablist" aria-label="Review subjects">
+      {tracks.map((t, i) => <button key={t.id} role="tab" aria-selected={track === t.id} onClick={() => selectTrack(t.id)} className={track === t.id ? 'active' : ''}><span className="track-number">0{i+1}</span><span><strong>{t.name}</strong><small>{t.detail}</small></span><span className="track-count">{t.stages.reduce((n,s) => n+s.lessons.length,0)} lessons</span></button>)}
     </div>
-  );
+    <div className="review-layout">
+      <aside className="review-sidebar" aria-label="Lesson directory">
+        <div className="sidebar-heading"><span>COURSE INDEX</span><strong>{lessons.length} lessons</strong></div>
+        <label className="review-search"><Search size={16}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a lesson" aria-label="Find a lesson"/>{search && <button aria-label="Clear search" onClick={() => setSearch('')}><X size={14}/></button>}</label>
+        <div className="review-stage-list">
+          {currentTrack.stages.map(stage => {
+            const filtered = stage.lessons.filter(l => `${l.title} ${l.summary}`.toLowerCase().includes(search.toLowerCase()));
+            if (!filtered.length) return null;
+            return <section key={stage.stageNumber} className="review-stage"><h2>{stage.stageTitle.replace(/^Stage /, '').replace(/^\d+: /, '')}<small>{stage.lessons.filter(l => completed.has(l.id)).length}/{stage.lessons.length}</small></h2>
+              {filtered.map(l => <button key={l.id} className={`review-lesson-link ${selected.id === l.id ? 'active' : ''}`} onClick={() => select(l)}><span>{l.lessonNumber}</span><strong>{l.title}</strong>{completed.has(l.id) && <Check size={15} aria-label="Complete"/>}</button>)}
+            </section>;
+          })}
+        </div>
+      </aside>
+      <article className="review-article" key={selected.id}>
+        <div className="lesson-header"><div className="lesson-kicker"><span>LESSON {selected.lessonNumber}</span><span>·</span><span>{selected.stageTitle.replace(/^Stage \d+: /, '').replace(/^\d+\. /, '')}</span></div><h2>{selected.title}</h2><p>{compact(selected.summary, 210)}</p><div className="lesson-actions"><button onClick={markDone} className={completed.has(selected.id) ? 'completed' : ''}><Check size={16}/>{completed.has(selected.id) ? 'Completed' : 'Mark complete'}</button><button onClick={ask}><Sparkles size={16}/> Ask a question</button></div></div>
+        <div className="lesson-content">
+          <LessonVisual lesson={selected}/>
+          <section className="lesson-section"><div className="section-label"><span>01 / THE IDEA</span><span>Read → picture it</span></div><div className="idea-grid"><div className="idea-main"><h3>What’s happening?</h3><p>{compact(selected.coreTheory[0] || selected.summary, 260)}</p></div><div className="idea-memory"><span>REMEMBER THIS</span><strong>{compact(selected.boardExamTip, 125)}</strong></div></div>{selected.coreTheory.length > 1 && <details className="more-detail"><summary>More detail <ChevronDown size={15}/></summary><ul>{selected.coreTheory.slice(1).map((line,i)=><li key={i}>{line}</li>)}</ul></details>}</section>
+          {selected.interactiveTool && <section className="lesson-section"><div className="section-label"><span>TRY IT / LIVE MODEL</span></div><CurriculumInteractiveLab toolType={selected.interactiveTool} lessonTitle={selected.title} onOpenGrapher={onOpenGrapher}/></section>}
+          <section className="lesson-section"><div className="section-label"><span>02 / THE RELATIONSHIP</span><span>Know what each symbol means</span></div><div className="formula-stack">{selected.formulas.map((f,i)=><div className="formula-card" key={i}><div><span>{f.name}</span><small>{f.variables}</small></div><strong className="math-expression">{formatEngineeringFormula(f.formula)}</strong></div>)}</div></section>
+          <section className="lesson-section"><div className="section-label"><span>03 / WORK ONE OUT</span><span>Follow the numbers</span></div><div className="worked-card"><h3>{compact(selected.workedExample.problem, 260)}</h3><div className="given-row">{selected.workedExample.given.map((g,i)=><span key={i}>{g}</span>)}</div><ol>{selected.workedExample.stepByStep.map((s,i)=><li key={i}><span>{String(i+1).padStart(2,'0')}</span><p>{s.replace(/^Step \d+\s*(\([^)]*\))?\s*:\s*/, '')}</p></li>)}</ol><div className="worked-answer"><span>RESULT</span><strong>{selected.workedExample.answer}</strong></div></div></section>
+          <section ref={practiceRef} className="lesson-section"><div className="section-label"><span>04 / RECALL</span><span>Try before revealing</span></div>{questions.map(q => <div className="recall-card" key={q.id}><h3>{q.question}</h3><div className="recall-options">{q.options.map((option,i)=><button key={i} disabled={answers[q.id] !== undefined} onClick={() => setAnswers(prev => ({...prev,[q.id]:i}))} className={answers[q.id] === undefined ? '' : i === q.correctAnswer ? 'correct' : answers[q.id] === i ? 'incorrect' : 'muted'}><span>{String.fromCharCode(65+i)}</span>{option}</button>)}</div>{answers[q.id] !== undefined && <div className="recall-feedback"><strong>{answers[q.id] === q.correctAnswer ? 'Exactly right.' : 'Try the relationship again.'}</strong><p>{compact(q.explanation, 250)}</p></div>}</div>)}{!questions.length && <p>Review the example, then explain the relationship aloud in one sentence.</p>}{allCorrect && !completed.has(selected.id) && <button className="review-primary" onClick={markDone}><Check size={16}/> Save as completed</button>}</section>
+        </div>
+        <footer className="lesson-footer"><button disabled={index===0} onClick={() => select(lessons[index-1])}><ArrowLeft size={16}/> Previous</button><span>{index+1} / {lessons.length}</span><button disabled={index===lessons.length-1} onClick={() => select(lessons[index+1])}>Next lesson <ArrowRight size={16}/></button></footer>
+      </article>
+    </div>
+    <InlineAIAssistant isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} context={context}/>
+  </div>;
 };

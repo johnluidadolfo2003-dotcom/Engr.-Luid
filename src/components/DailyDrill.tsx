@@ -43,8 +43,16 @@ export const DailyDrill: React.FC<DailyDrillProps> = ({
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showSolution, setShowSolution] = useState<boolean>(false);
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
-  const [answers, setAnswers] = useState<Record<string, { choice: number; isCorrect: boolean }>>({});
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('ree_bookmarks') || '[]')); }
+    catch { return new Set(); }
+  });
+  const [answers, setAnswers] = useState<Record<string, { choice: number; isCorrect: boolean }>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ree_daily_answers') || '{}');
+      return saved.date === new Date().toDateString() ? saved.answers || {} : {};
+    } catch { return {}; }
+  });
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
   // Same-Page AI Assistant state
@@ -54,6 +62,13 @@ export const DailyDrill: React.FC<DailyDrillProps> = ({
   // Timer per problem (standard REE pace: 120s per item)
   const [secondsLeft, setSecondsLeft] = useState<number>(120);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
+
+  useEffect(() => {
+    try { localStorage.setItem('ree_bookmarks', JSON.stringify([...bookmarkedIds])); } catch {}
+  }, [bookmarkedIds]);
+  useEffect(() => {
+    try { localStorage.setItem('ree_daily_answers', JSON.stringify({ date: new Date().toDateString(), answers })); } catch {}
+  }, [answers]);
 
   // Filter problems by Subject, Level, and Mode
   const filteredProblems = useMemo(() => {

@@ -61,6 +61,8 @@ export interface CurriculumLesson {
   workedExample: CurriculumExample;
   quickPractice: CurriculumPracticeQuestion[];
   boardExamTip: string;
+  visual?: 'steps' | 'balance' | 'triangle' | 'wave' | 'circuit' | 'flow' | 'graph' | 'energy' | 'scale';
+  visualLabels?: [string, string, string];
 }
 
 export interface CurriculumStage {
