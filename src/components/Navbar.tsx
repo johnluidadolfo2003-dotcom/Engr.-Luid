@@ -13,7 +13,7 @@ const nav = [
   { id: 'roadmap', label: 'Study plan', icon: CalendarDays },
 ] as const;
 export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab, completedToday, dailyTarget }) => <header className="review-nav">
-  <div className="review-nav-inner"><button className="review-brand" onClick={() => setActiveTab('curriculum')} aria-label="REE Review Desk home"><span className="brand-mark">R<span>.</span></span><span><strong>REE Review Desk</strong><small>STUDY / PRACTICE / REPEAT</small></span></button>
+  <div className="review-nav-inner"><button className="review-brand" onClick={() => setActiveTab('curriculum')} aria-label="REE Review Desk home"><span className="brand-mark">R<span>.</span></span><span><strong>REE Review Desk</strong></span></button>
     <nav aria-label="Main navigation">{nav.map(item => {const Icon = item.icon; return <button key={item.id} onClick={() => setActiveTab(item.id)} className={activeTab===item.id ? 'active' : ''}><Icon size={15}/>{item.label}</button>})}</nav>
     <button className="nav-progress" onClick={() => setActiveTab('drill')} aria-label={`${completedToday} of ${dailyTarget} practice questions answered today`}><span>Today</span><strong>{completedToday}<small>/{dailyTarget}</small></strong></button>
   </div>
