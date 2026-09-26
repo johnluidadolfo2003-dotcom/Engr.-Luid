@@ -198,16 +198,13 @@ export const DailyDrill: React.FC<DailyDrillProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs text-amber-400 font-medium">
-              <span>Daily Target: 100 Problems</span>
-              <span>·</span>
-              <span>Start from Basic Math to Advanced Mastery</span>
+              <span>Daily practice</span>
+
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-              High-Yield Daily Board Exam Drill
+              Practice questions
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400">
-              Active recall with zero-jargon explanations. Master formulas step-by-step, starting from arithmetic and algebra.
-            </p>
+
           </div>
 
           {/* Quick Metrics & Start from Basic button */}
@@ -218,7 +215,7 @@ export const DailyDrill: React.FC<DailyDrillProps> = ({
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-xl text-xs font-semibold transition-colors"
               >
                 <GraduationCap className="w-4 h-4" />
-                <span>Zero-Knowledge Primer</span>
+                <span>Start with basics</span>
               </button>
             )}
 

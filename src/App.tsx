@@ -196,14 +196,9 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-800">REE Review Desk</span>
-            <span>·</span>
-            <span>Registered Electrical Engineer Licensure Examination Review</span>
+
           </div>
-          <div>
-            <span>Study at your pace</span>
-            <span className="mx-2">·</span>
-            <span>Mathematics · Electrical Engineering · ESAS</span>
-          </div>
+
         </div>
       </footer>
     </div>
